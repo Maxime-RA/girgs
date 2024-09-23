@@ -10,6 +10,21 @@
 
 namespace girgs {
 
+static double evaluate_polynomial(const std::vector<double>& coefficients, double x) {
+    double result = 0.0;
+    for (double coefficient : coefficients) {
+        result = result * x + coefficient;
+    }
+    return result;
+}
+static double evaluate_polynomial(const std::vector<int>& coefficients, double x) {
+    double result = 0.0;
+    for (int coefficient : coefficients) {
+        result = result * x + coefficient;
+    }
+    return result;
+}
+
 // helper for scale weights
 static double exponentialSearch(const std::function<double(double)> &f, double desiredValue, double accuracy = 0.02, double lower = 1.0,
                                 double upper = 2.0) {
@@ -80,6 +95,72 @@ private:
     iterator m_sorted_end;
     double m_lower{std::numeric_limits<double>::max()};
 };
+
+double estimateWeightScalingBDF(const std::vector<double> &weights, double desiredAvgDegree,
+                                const std::vector<int> &volume_poly, int length, double depth_vol) {
+    const auto n = weights.size();
+    const auto poly_deg = volume_poly.size() - 1;
+    std::vector<double> sweights(n);
+    LazySorter lazy_sorter(sweights);
+
+    // Computing weight exponents and the coefficients of the weight of the polynomial.
+    auto max_w = 0.0;
+    std::vector<double> W_dd(poly_deg, 0.0);
+    std::vector<double> W_2dd(poly_deg, 0.0);
+    for (int i = 0; i < n; ++i) {
+        const auto each = std::pow(weights[i], 1.0 / depth_vol);
+        sweights[i] = each;
+        max_w = std::max(max_w, each);
+        for (int j = 0; j < poly_deg; ++j) {
+            // Skip sum if the coefficient is 0 at this degree. (except for 1, as we need it for the estimation)
+            if (volume_poly[j] != 0 || j == poly_deg - 1) {
+                W_dd[j] += std::pow(each, poly_deg - j);
+                W_2dd[j] += std::pow(each, 2 * (poly_deg - j));
+            }
+        }
+    }
+
+    // Initialising the weight polynomial
+    std::vector<double> overestimate_poly(volume_poly.size());
+    for (int i = 0; i < poly_deg; ++i) {
+        overestimate_poly[i] = (1.0 / n) * volume_poly[i] * (W_dd[i] * W_dd[i] - W_2dd[i]);
+    }
+    auto f = [&](double thr_con) {
+        // Compute overestimation for  all max-sets
+        const auto overestimation = evaluate_polynomial(overestimate_poly, thr_con);
+
+
+        // Sort the necessary weights
+        auto min_richclub_weight = 1.0 / (2 * thr_con * max_w);
+        const auto richclub_end = lazy_sorter.sort_downto(min_richclub_weight);
+        assert(richclub_end <= sweights.end());
+
+
+        // Use two pointer two get all pairs with threshold greater one.
+        auto error = 0.0;
+        auto richclub_end_index = std::distance(sweights.begin(), richclub_end);
+        int i = 0, j = richclub_end_index;
+        int counter = 0;
+        while (i < j) {
+            if (thr_con * sweights[i] * sweights[j] > (1.0/2.0)) {
+                for (int k = i + 1; k <= j; ++k) {
+                    const auto pairError = evaluate_polynomial(volume_poly, thr_con * sweights[i] * sweights[k]);
+                    error += (2 * pairError) - 2;
+                    counter ++;
+                }
+                i += 1;
+            } else {
+                j -= 1;
+            }
+        }
+        return overestimation - (error / n);
+    };
+
+    auto adjusted_sum = (W_dd[poly_deg - 1] * W_dd[poly_deg - 1] - W_2dd[poly_deg - 1]);
+    auto lower_thr = (1.0/2.0) * std::pow((desiredAvgDegree * n)  / (length * adjusted_sum), 1.0 / depth_vol);
+    auto estimated_tau = exponentialSearch(f, desiredAvgDegree, 0.1, lower_thr, lower_thr * 2);
+    return estimated_tau;
+}
 
 // helper for scale weights
 double estimateWeightScalingThreshold(const std::vector<double> &weights, double desiredAvgDegree, int dimension) {

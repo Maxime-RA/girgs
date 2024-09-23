@@ -15,6 +15,43 @@
 
 namespace girgs {
 
+static double evalBDFDistance(const std::vector<double> &v1, const std::vector<double> &v2, const std::vector<std::vector<int>> &minMaxSet) {
+    double minMaxNorm = std::numeric_limits<double>::max();
+    for (const auto &set : minMaxSet) {
+        double currentMaxNorm = 0.0;
+        for (int idx : set) {
+            double diff = std::abs(v1[idx] - v2[idx]);
+            double torusDist = std::min(diff, 1.0 - diff);
+            currentMaxNorm = std::max(currentMaxNorm, torusDist);
+        }
+        minMaxNorm = std::min(minMaxNorm, currentMaxNorm);
+    }
+    return minMaxNorm;
+}
+
+static std::vector<std::vector<double>> filterVectors(const std::vector<std::vector<double>> &inputVectors, const std::vector<int> &indices) {
+    std::vector<std::vector<double>> filteredVectors;
+
+    for (const auto &vec : inputVectors) {
+        std::vector<double> filteredVec;
+        for (int idx : indices) {
+            filteredVec.push_back(vec[idx]);  // Select only the dimensions specified in 'indices'
+        }
+        filteredVectors.push_back(filteredVec);  // Add the filtered vector to the result
+    }
+
+    return filteredVectors;
+}
+
+static std::vector<double> adjustWeights(const std::vector<double> &weights, const double thr_con, const double dimension) {
+    std::vector<double> result(weights.size());
+    const double scale = std::pow(thr_con, dimension) * std::accumulate(weights.begin(), weights.end(), 0.0);
+    for (int i = 0; i < weights.size(); i++) {
+        result[i] = scale * weights[i];
+    }
+    return result;
+}
+
 std::vector<double> generateWeights(int n, double ple, int weightSeed, bool parallel) {
     const auto threads = parallel ? std::max(1, std::min(omp_get_max_threads(), n / 10000)) : 1;
     auto result = std::vector<double>(n);
@@ -51,6 +88,11 @@ std::vector<std::vector<double>> generatePositions(int n, int dimension, int pos
     }
 
     return result;
+}
+
+double scaleWeightPolynomial(const std::vector<double> &weights, double desiredAvgDegree,
+                                    const std::vector<int> &volume_poly, int length, double depth_vol) {
+    return estimateWeightScalingBDF(weights, desiredAvgDegree, volume_poly, length, depth_vol);
 }
 
 double scaleWeights(std::vector<double>& weights, double desiredAvgDegree, int dimension, double alpha) {
@@ -90,7 +132,7 @@ std::vector<std::pair<int, int>> generateEdges(const std::vector<double> &weight
 
     auto addEdge = [&](int u, int v, int tid) {
         auto& local = local_edges[tid].first;
-        local.emplace_back(std::min(u),std::max(v));
+        local.emplace_back(u, v);
         if (local.size() == block_size) {
             flush(local);
             local.clear();
@@ -115,6 +157,88 @@ std::vector<std::pair<int, int>> generateEdges(const std::vector<double> &weight
         flush(v.first);
 
     return result;
+}
+
+std::vector<std::pair<int, int>> generateBDFEdges(const std::vector<double> &weights, const std::vector<std::vector<double>> &positions,
+                                                  const std::vector<std::vector<int>> &minMaxSet,  const std::vector<std::vector<int>> &reducedMinMaxSet,
+                                                  const int depth_vol, const double thr_con, const double thr_con_generation) {
+
+    using edge_vector = std::vector<std::pair<int, int>>;
+    edge_vector result;
+
+    std::vector<std::pair<
+            edge_vector,
+            uint64_t[31] /* avoid false sharing */
+    > > local_edges(omp_get_max_threads());
+
+    constexpr auto block_size = size_t{1} << 20;
+
+    std::mutex m;
+    auto flush = [&] (const edge_vector& local) {
+        std::lock_guard<std::mutex> lock(m);
+        result.insert(result.end(), local.cbegin(), local.cend());
+    };
+
+    // To avoid computing exponent multiple times
+    std::vector<double> threshold_weights(weights.size());
+    for (int i = 0; i < weights.size(); i++) {
+        threshold_weights[i] = std::pow(weights[i], 1.0 / depth_vol);
+    }
+
+    // add edges also filters the edges. Avoids modifying the other code
+    auto addEdge = [&](int u, int v, int tid) {
+        const auto dist = evalBDFDistance(positions[u], positions[v], minMaxSet);
+        if (dist > thr_con * threshold_weights[u] * threshold_weights[v]) {
+            return;
+        }
+        auto& local = local_edges[tid].first;
+        local.emplace_back(std::min(u, v),std::max(u, v));
+        if (local.size() == block_size) {
+            flush(local);
+            local.clear();
+        }
+    };
+
+    auto alpha = std::numeric_limits<double>::infinity();
+    auto r_weights = adjustWeights(weights, thr_con, depth_vol);
+    for (const auto maxSet : reducedMinMaxSet){
+        auto r_positions = filterVectors(positions, maxSet);
+        auto dimension = depth_vol;
+        switch(dimension) {
+            case 1: makeSpatialTree<1>(r_weights, r_positions, alpha, addEdge).generateEdges(0); break;
+            case 2: makeSpatialTree<2>(r_weights, r_positions, alpha, addEdge).generateEdges(0); break;
+            case 3: makeSpatialTree<3>(r_weights, r_positions, alpha, addEdge).generateEdges(0); break;
+            case 4: makeSpatialTree<4>(r_weights, r_positions, alpha, addEdge).generateEdges(0); break;
+            case 5: makeSpatialTree<5>(r_weights, r_positions, alpha, addEdge).generateEdges(0); break;
+            default:
+                std::cout << "Dimension " << dimension << " not supported." << std::endl;
+                std::cout << "No edges generated." << std::endl;
+                break;
+        }
+    }
+    for(const auto& v : local_edges)
+        flush(v.first);
+
+    return result;
+}
+
+std::vector<std::pair<int, int>> generateBDFEdgesTrivial(const std::vector<double> &weights, const std::vector<std::vector<double>> &positions,
+                                                         const std::vector<std::vector<int>> &minMaxSet, const double depth_vol, const double thr_con) {
+
+    std::vector<std::pair<int, int>> closePairs;
+    std::vector<double> threshold_weights(weights.size());
+    for (int i = 0; i < weights.size(); i++) {
+        threshold_weights[i] = std::pow(weights[i], 1.0 / depth_vol);
+    }
+    for (int i = 0; i < positions.size(); ++i) {
+        for (int j = i + 1; j < positions.size(); ++j) {
+            const auto dist = evalBDFDistance(positions[i], positions[j], minMaxSet);
+            if (dist <= thr_con * threshold_weights[i] * threshold_weights[j]) {
+                closePairs.emplace_back(i,j);
+            }
+        }
+    }
+    return closePairs;
 }
 
 

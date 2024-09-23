@@ -41,6 +41,17 @@ GIRGS_API std::vector<double> generateWeights(int n, double ple, int weightSeed,
  */
 GIRGS_API std::vector<std::vector<double>> generatePositions(int n, int dimension, int positionSeed, bool parallel = true);
 
+
+GIRGS_API std::vector<std::pair<int, int>> generateBDFEdgesTrivial(const std::vector<double> &weights, const std::vector<std::vector<double>> &positions,
+                                                                   const std::vector<std::vector<int>> &minMaxSet, const double depth_vol, const double thr_con);
+
+GIRGS_API std::vector<std::pair<int, int>> generateBDFEdges(const std::vector<double> &weights, const std::vector<std::vector<double>> &positions,
+                                                      const std::vector<std::vector<int>> &minMaxSet,  const std::vector<std::vector<int>> &reducedMinMaxSet,
+                                                      const int depth_vol, const double thr_con, const double thr_con_generation);
+
+GIRGS_API double scaleWeightPolynomial(const std::vector<double> &weights, double desiredAvgDegree,
+                                    const std::vector<int> &volume_poly, int length, double depth_vol);
+
 /**
  * @brief
  *  Scales all weights so that the expected average degree equals desiredAvgDegree.

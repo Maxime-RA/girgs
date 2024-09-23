@@ -204,14 +204,14 @@ void SpatialTree<D, EdgeCallback>::sampleTypeI(
             assert(j == static_cast<unsigned int>(std::log2(nodeInB.weight/m_w0)));
 
             assert(nodeInA.index != nodeInB.index);
-            const auto distance = nodeInA.distance(nodeInB);
-            const auto w_term = nodeInA.weight*nodeInB.weight/m_W;
-            const auto d_term = pow_to_the<D>(distance);
 
             if(inThresholdMode) {
-                if(d_term < w_term)
-                    m_EdgeCallback(nodeInA.index, nodeInB.index, threadId);
+                // Check is done by edge callback for BDFs
+                m_EdgeCallback(nodeInA.index, nodeInB.index, threadId);
             } else {
+                const auto distance = nodeInA.distance(nodeInB);
+                const auto w_term = nodeInA.weight*nodeInB.weight/m_W;
+                const auto d_term = pow_to_the<D>(distance);
                 auto edge_prob = std::pow(w_term/d_term, m_alpha); // we don't need min with 1.0 here
                 if(dist(m_gens[threadId]) < edge_prob)
                     m_EdgeCallback(nodeInA.index, nodeInB.index, threadId);
