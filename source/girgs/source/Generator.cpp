@@ -90,7 +90,7 @@ std::vector<std::pair<int, int>> generateEdges(const std::vector<double> &weight
 
     auto addEdge = [&](int u, int v, int tid) {
         auto& local = local_edges[tid].first;
-        local.emplace_back(u,v);
+        local.emplace_back(std::min(u),std::max(v));
         if (local.size() == block_size) {
             flush(local);
             local.clear();
