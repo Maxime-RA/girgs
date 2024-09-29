@@ -132,7 +132,7 @@ std::vector<std::pair<int, int>> generateEdges(const std::vector<double> &weight
 
     auto addEdge = [&](int u, int v, int tid) {
         auto& local = local_edges[tid].first;
-        local.emplace_back(u, v);
+        local.emplace_back(std::min(u,v), std::max(u,v));
         if (local.size() == block_size) {
             flush(local);
             local.clear();
@@ -205,11 +205,11 @@ std::vector<std::pair<int, int>> generateBDFEdges(const std::vector<double> &wei
         auto r_positions = filterVectors(positions, maxSet);
         auto dimension = depth_vol;
         switch(dimension) {
-            case 1: makeSpatialTree<1>(r_weights, r_positions, alpha, addEdge).generateEdges(0); break;
-            case 2: makeSpatialTree<2>(r_weights, r_positions, alpha, addEdge).generateEdges(0); break;
-            case 3: makeSpatialTree<3>(r_weights, r_positions, alpha, addEdge).generateEdges(0); break;
-            case 4: makeSpatialTree<4>(r_weights, r_positions, alpha, addEdge).generateEdges(0); break;
-            case 5: makeSpatialTree<5>(r_weights, r_positions, alpha, addEdge).generateEdges(0); break;
+            case 1: makeSpatialTree<1>(r_weights, r_positions, alpha, addEdge, true).generateEdges(0); break;
+            case 2: makeSpatialTree<2>(r_weights, r_positions, alpha, addEdge, true).generateEdges(0); break;
+            case 3: makeSpatialTree<3>(r_weights, r_positions, alpha, addEdge, true).generateEdges(0); break;
+            case 4: makeSpatialTree<4>(r_weights, r_positions, alpha, addEdge, true).generateEdges(0); break;
+            case 5: makeSpatialTree<5>(r_weights, r_positions, alpha, addEdge, true).generateEdges(0); break;
             default:
                 std::cout << "Dimension " << dimension << " not supported." << std::endl;
                 std::cout << "No edges generated." << std::endl;
@@ -239,6 +239,27 @@ std::vector<std::pair<int, int>> generateBDFEdgesTrivial(const std::vector<doubl
         }
     }
     return closePairs;
+}
+
+
+std::vector<std::pair<int, int>> checkBDFEdges(const std::vector<double> &weights, const std::vector<std::vector<double>> &positions, std::vector<std::pair<int, int>> &edges,
+                                                         const std::vector<std::vector<int>> &minMaxSet, const double depth_vol, const double thr_con) {
+
+    std::vector<std::pair<int, int>> result;
+    std::vector<double> threshold_weights(weights.size());
+    for (int i = 0; i < weights.size(); i++) {
+        threshold_weights[i] = std::pow(weights[i], 1.0 / depth_vol);
+    }
+
+    for (int count = 0; count < edges.size(); ++count) {
+        auto i = edges[count].first;
+        auto j = edges[count].second;
+        const auto dist = evalBDFDistance(positions[i], positions[j], minMaxSet);
+        if (dist <= thr_con * threshold_weights[i] * threshold_weights[j]) {
+            result.emplace_back(i,j);
+        }
+    }
+    return result;
 }
 
 

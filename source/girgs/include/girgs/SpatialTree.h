@@ -32,7 +32,7 @@ class SpatialTree
     using CoordinateHelper = SpatialTreeCoordinateHelper<D>;
 
 public:
-    SpatialTree(const std::vector<double>& weights, const std::vector<std::vector<double>>& positions, double alpha, EdgeCallback& edgeCallback, bool profile = false);
+    SpatialTree(const std::vector<double>& weights, const std::vector<std::vector<double>>& positions, double alpha, EdgeCallback& edgeCallback, bool bdf = false, bool profile = false);
 
     /**
      * @brief
@@ -185,6 +185,7 @@ protected:
 
 private:
     EdgeCallback& m_EdgeCallback; ///< called for every produced edge
+    const bool m_bdf;
     const bool m_profile;
 
     double m_alpha;             ///< girg model parameter, with higher alpha, long edges become less likely
@@ -216,8 +217,8 @@ private:
 /// provide automatic type deduction for constructor
 template <unsigned int D, typename EdgeCallback>
 SpatialTree<D,EdgeCallback> makeSpatialTree(const std::vector<double>& weights, const std::vector<std::vector<double>>& positions,
-        double alpha, EdgeCallback& edgeCallback, bool profile = false) {
-    return {weights, positions, alpha, edgeCallback, profile};
+        double alpha, EdgeCallback& edgeCallback, bool bdf = false, bool profile = false) {
+    return {weights, positions, alpha, edgeCallback,bdf, profile};
 }
 
 

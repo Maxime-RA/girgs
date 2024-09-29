@@ -41,14 +41,69 @@ GIRGS_API std::vector<double> generateWeights(int n, double ple, int weightSeed,
  */
 GIRGS_API std::vector<std::vector<double>> generatePositions(int n, int dimension, int positionSeed, bool parallel = true);
 
-
+/**
+ *
+ * Samples the edges of a BDF-GIRG using the trivial O(n^2) algorithm
+ *
+ *
+ * @param weights weights of the vertices
+ * @param positions positions of the vertices
+ * @param minMaxSet min-max set of the BDF
+ * @param depth_vol the volumetric depth of the BDF
+ * @param thr_con the threshold constant
+ *
+ * @return edges of BDF-GIRG
+ *
+ */
 GIRGS_API std::vector<std::pair<int, int>> generateBDFEdgesTrivial(const std::vector<double> &weights, const std::vector<std::vector<double>> &positions,
                                                                    const std::vector<std::vector<int>> &minMaxSet, const double depth_vol, const double thr_con);
-
+/**
+ * Samples the edge of a BDF by sampling the edges of each min-max set separately. May sample double edges.
+ *
+ * @param weights weights of the vertices
+ * @param positions positions of the vertices
+ * @param minMaxSet min-max set of the BDF
+ * @param reducedMinMaxSet simplified min-max set
+ * @param depth_vol the volumetric depth of the BDF
+ * @param thr_con the threshold constant
+ * @param thr_con_generation the threshold constant used for the generation. Must be larger then thr_con, best runtime fo avg. degree ~ 5 * dimension.
+ *
+ * @return edges of BDF-GIRG
+ *
+ */
 GIRGS_API std::vector<std::pair<int, int>> generateBDFEdges(const std::vector<double> &weights, const std::vector<std::vector<double>> &positions,
                                                       const std::vector<std::vector<int>> &minMaxSet,  const std::vector<std::vector<int>> &reducedMinMaxSet,
                                                       const int depth_vol, const double thr_con, const double thr_con_generation);
 
+/**
+ *
+ * Checks edges given a min-max set
+ *
+ *
+ * @param weights weights of the vertices
+ * @param positions positions of the vertices
+ * @param edges edges to check
+ * @param minMaxSet min-max set of the BDF
+ * @param depth_vol the volumetric depth of the BDF
+ * @param thr_con the threshold constant
+ *
+ * @return only the correct edges
+ *
+ */
+GIRGS_API std::vector<std::pair<int, int>> checkBDFEdges(const std::vector<double> &weights, const std::vector<std::vector<double>> &positions, std::vector<std::pair<int, int>> &edges,
+                                                       const std::vector<std::vector<int>> &minMaxSet, const double depth_vol, const double thr_con);
+
+
+/**
+ * Determines the threshold constant based on the weights, the desired average degree and a polynomial describing the volume
+ *
+ * @param weights weights of the vertices
+ * @param desiredAvgDegree desired average degree
+ * @param volume_poly polynomial of the volume
+ * @param length length of the BDF (length of the reduced min-max set may be used for a better runtime)
+ * @param depth_vol volumetric depth
+ * @return threshold_constant * (1/n^depth_vol)
+ */
 GIRGS_API double scaleWeightPolynomial(const std::vector<double> &weights, double desiredAvgDegree,
                                     const std::vector<int> &volume_poly, int length, double depth_vol);
 

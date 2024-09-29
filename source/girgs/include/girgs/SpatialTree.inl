@@ -7,8 +7,9 @@ namespace girgs {
 
 
 template<unsigned int D, typename EdgeCallback>
-SpatialTree<D, EdgeCallback>::SpatialTree(const std::vector<double>& weights, const std::vector<std::vector<double>>& positions, double alpha, EdgeCallback& edgeCallback, bool profile)
+SpatialTree<D, EdgeCallback>::SpatialTree(const std::vector<double>& weights, const std::vector<std::vector<double>>& positions, double alpha, EdgeCallback& edgeCallback, bool bdf, bool profile)
 : m_EdgeCallback(edgeCallback)
+, m_bdf(bdf)
 , m_profile(profile)
 , m_alpha(alpha)
 , m_n(weights.size())
@@ -206,8 +207,17 @@ void SpatialTree<D, EdgeCallback>::sampleTypeI(
             assert(nodeInA.index != nodeInB.index);
 
             if(inThresholdMode) {
-                // Check is done by edge callback for BDFs
-                m_EdgeCallback(nodeInA.index, nodeInB.index, threadId);
+                if (m_bdf) {
+                    // Check is done by edge callback for BDFs
+                    m_EdgeCallback(nodeInA.index, nodeInB.index, threadId);
+                } else {
+                    const auto distance = nodeInA.distance(nodeInB);
+                    const auto w_term = nodeInA.weight*nodeInB.weight/m_W;
+                    const auto d_term = pow_to_the<D>(distance);
+                    if(d_term < w_term) {
+                        m_EdgeCallback(nodeInA.index, nodeInB.index, threadId);
+                    }
+                }
             } else {
                 const auto distance = nodeInA.distance(nodeInB);
                 const auto w_term = nodeInA.weight*nodeInB.weight/m_W;
